@@ -18,29 +18,28 @@
 #include "initShader.h"
 #include "myLib.h"
 
-// Vertices
+// VERTICES
 int n;
 vec4 *positions;
 vec4 *colors;
-
-// NUMBER VERTICES
 int cylinder_pos;
 int cylinder_cols;
-
-// int draw_idx;
-// int draw_len = 0;
 int curr_index = 0;
 
 // INDICES
-Coordinates floor_idx = {0, 437};
-Coordinates base_idx = {438, 875};
-Coordinates lower_joint_idx = {876, 1313};
-Coordinates lower_arm_idx = {1314, 1752};
-Coordinates middle_joint_idx = {1752, 2189};
-Coordinates middle_arm_idx = {2190, 2627};
-Coordinates upper_joint_idx = {};
+int floor_idx = 0;
+int base_idx = 438;
+int lower_joint_idx = 876;
+int lower_arm_idx = 1314;
+int middle_joint_idx = 1752;
+int middle_arm_idx = 2190;
+int upper_joint_idx = 2628;
+int upper_arm_idx = 3066;
+int wrist_idx = 3504;
+int finger_1_idx = 3942;
+int finger_2_idx = 4380;
 
-// CTMS
+// FLOOR INFO
 mat4 ctm_floor = IDENTITY;
 mat4 floor_translation = IDENTITY;
 mat4 ctm_floor_f = IDENTITY;
@@ -85,7 +84,38 @@ mat4 ctm_middle_arm = IDENTITY;
 mat4 ctm_middle_arm_f = IDENTITY;
 vec4 middle_arm_dimensions;
 
-float rotation_speed = 0.3f;
+// UPPER JOINT INFO
+mat4 upper_joint_rotation = IDENTITY;
+mat4 upper_joint_translation = IDENTITY;
+mat4 ctm_upper_joint = IDENTITY;
+mat4 ctm_c_upper_joint = IDENTITY;
+mat4 ctm_upper_joint_f = IDENTITY;
+mat4 upper_joint_transformations = IDENTITY;
+vec4 upper_joint_dimensions;
+float upper_joint_delta = 0.0;
+
+// UPPER ARM INFO
+mat4 ctm_upper_arm = IDENTITY;
+mat4 ctm_upper_arm_f = IDENTITY;
+vec4 upper_arm_dimensions;
+
+// WRIST INFO
+mat4 wrist_rotation = IDENTITY;
+mat4 wrist_translation = IDENTITY;
+mat4 ctm_wrist = IDENTITY;
+mat4 ctm_c_wrist = IDENTITY;
+mat4 ctm_wrist_f = IDENTITY;
+mat4 wrist_transformations = IDENTITY;
+vec4 wrist_dimensions;
+float wrist_delta = 0.0;
+
+// FINGER INFO
+mat4 ctm_finger_1 = IDENTITY;
+mat4 ctm_finger_2 = IDENTITY;
+mat4 ctm_finger_1_f = IDENTITY;
+mat4 ctm_finger_2_f = IDENTITY;
+mat4 finger_transformations = IDENTITY;
+vec4 finger_dimensions;
 
 // Mouse Control
 vec4 drag_from = ORIGIN;
@@ -99,7 +129,7 @@ GLuint projection_location;
 // Viewing
 mat4 model_view = IDENTITY;
 GLuint model_view_location;
-vec4 eye = (vec4){0.0f, 1.0f, 20.0f, 1.0f};
+vec4 eye = (vec4){0.0f, 10.0f, 20.0f, 1.0f};
 vec4 at = ZERO;
 vec4 up = (vec4){0.0f, 1.0f, 0.0f, 1.0f};
 
@@ -110,7 +140,6 @@ GLuint ctm_location;
 float zoom_level = 0.0f;
 float zoom_speed = 0.1f;
 
-void init_cube(vec4 *, vec2 *, int, vec4, float);
 void init_buffers(int);
 void print_controls();
 void updateLightPosition();
@@ -149,6 +178,32 @@ void update_ctms()
   // MIDDLE ARM CTM
   ctm_middle_arm_f = ctm_middle_arm; // apply middle arm scaling/translating COM then translation to top of lower arm
   ctm_middle_arm_f = mm_mult(middle_joint_transformations, ctm_middle_arm_f);
+
+  // UPPER JOINT CTM
+  ctm_upper_joint_f = mm_mult(upper_joint_rotation, ctm_upper_joint);           // apply middle joint rotations then middle joint scaling/translating COM
+  ctm_upper_joint_f = mm_mult(ctm_c_upper_joint, ctm_upper_joint_f);            // apply translation to top of lower arm
+  ctm_upper_joint_f = mm_mult(middle_joint_transformations, ctm_upper_joint_f); // finally apply any lower joint translations or rotations
+  upper_joint_transformations = mm_mult(upper_joint_translation, upper_joint_rotation);
+  upper_joint_transformations = mm_mult(middle_joint_transformations, upper_joint_transformations);
+
+  // UPPER ARM CTM
+  ctm_upper_arm_f = ctm_upper_arm; // apply middle arm scaling/translating COM then translation to top of lower arm
+  ctm_upper_arm_f = mm_mult(upper_joint_transformations, ctm_upper_arm_f);
+
+  // WRIST CTM
+  ctm_wrist_f = mm_mult(wrist_rotation, ctm_wrist);                // apply middle joint rotations then middle joint scaling/translating COM
+  ctm_wrist_f = mm_mult(ctm_c_wrist, ctm_wrist_f);                 // apply translation to top of lower arm
+  ctm_wrist_f = mm_mult(upper_joint_transformations, ctm_wrist_f); // finally apply any lower joint translations or rotations
+  wrist_transformations = mm_mult(wrist_translation, wrist_rotation);
+  wrist_transformations = mm_mult(upper_joint_transformations, wrist_transformations);
+
+  // FINGER 1 CTM
+  ctm_finger_1_f = mm_mult(finger_transformations, ctm_finger_1); // apply finger scaling/translating COM then translation to top of upper arm and then finger translations
+  ctm_finger_1_f = mm_mult(wrist_transformations, ctm_finger_1_f);
+
+  // FINGER 2 CTM
+  ctm_finger_2_f = mm_mult(finger_transformations, ctm_finger_2); // apply finger scaling/translating COM then translation to top of upper arm and then finger translations
+  ctm_finger_2_f = mm_mult(wrist_transformations, ctm_finger_2_f);
 }
 
 void init_arm()
@@ -174,7 +229,7 @@ void init_arm()
   lower_joint_translation = translate_mat4((vec4){0.0, base_dimensions.y / 2.0, 0.0, 1.0});
 
   // CREATE LOWER ARM //
-  lower_arm_dimensions = (vec4){1.5, 5.0, 1.5, 1.0};
+  lower_arm_dimensions = (vec4){1.7, 5.0, 1.7, 1.0};
   init_cylinder(positions, colors, SQUARES);
   ctm_lower_arm = mm_mult(translate_mat4((vec4){0.0, lower_arm_dimensions.y / 2.0, 0.0, 1.0}), scale_mat4(lower_arm_dimensions)); // scale, translate center of mass
 
@@ -182,13 +237,41 @@ void init_arm()
   middle_joint_dimensions = (vec4){3.5, 2.0, 2.0, 1.0};
   init_cylinder(positions, colors, SQUARES);
   ctm_middle_joint = mm_mult(scale_mat4(middle_joint_dimensions), rotate_z_mat4(90.0)); // rotate, scale
-  ctm_c_middle_joint = translate_mat4((vec4){0.0, lower_arm_dimensions.y, 0.0, 1.0});   // translate on top of base
+  ctm_c_middle_joint = translate_mat4((vec4){0.0, lower_arm_dimensions.y, 0.0, 1.0});   // translate on top of lower arm
   middle_joint_translation = translate_mat4((vec4){0.0, lower_arm_dimensions.y, 0.0, 1.0});
 
   // CREATE MIDDLE ARM //
-  middle_arm_dimensions = (vec4){1.2, 5.0, 1.2, 1.0};
+  middle_arm_dimensions = (vec4){1.5, 5.0, 1.5, 1.0};
   init_cylinder(positions, colors, SQUARES);
   ctm_middle_arm = mm_mult(translate_mat4((vec4){0.0, middle_arm_dimensions.y / 2.0, 0.0, 1.0}), scale_mat4(middle_arm_dimensions)); // scale, translate center of mass
+
+  // CREATE UPPER JOINT //
+  upper_joint_dimensions = (vec4){3.2, 1.75, 1.75, 1.0};
+  init_cylinder(positions, colors, SQUARES);
+  ctm_upper_joint = mm_mult(scale_mat4(upper_joint_dimensions), rotate_z_mat4(90.0)); // rotate, scale
+  ctm_c_upper_joint = translate_mat4((vec4){0.0, middle_arm_dimensions.y, 0.0, 1.0}); // translate on top of the middle arm
+  upper_joint_translation = translate_mat4((vec4){0.0, middle_arm_dimensions.y, 0.0, 1.0});
+
+  // CREATE UPPER ARM //
+  upper_arm_dimensions = (vec4){1.3, 5.0, 1.3, 1.0};
+  init_cylinder(positions, colors, SQUARES);
+  ctm_upper_arm = mm_mult(translate_mat4((vec4){0.0, upper_arm_dimensions.y / 2.0, 0.0, 1.0}), scale_mat4(upper_arm_dimensions)); // scale, translate center of mass
+
+  // CREATE WRIST //
+  wrist_dimensions = (vec4){3.0, 1.5, 1.5, 1.0};
+  init_cylinder(positions, colors, SQUARES);
+  ctm_wrist = mm_mult(scale_mat4(wrist_dimensions), rotate_z_mat4(90.0));      // rotate, scale
+  ctm_c_wrist = translate_mat4((vec4){0.0, upper_arm_dimensions.y, 0.0, 1.0}); // translate on top of the middle arm
+  wrist_translation = translate_mat4((vec4){0.0, upper_arm_dimensions.y, 0.0, 1.0});
+
+  // CREATE FINGER 1 //
+  finger_dimensions = (vec4){0.8, 3.0, 0.8, 1.0};
+  init_cylinder(positions, colors, SQUARES);
+  ctm_finger_1 = mm_mult(translate_mat4((vec4){-wrist_dimensions.x / 4.0, finger_dimensions.y / 2.0, 0.0, 1.0}), scale_mat4(finger_dimensions)); // scale, translate center of mass
+
+  // CREATE FINGER 2 //
+  init_cylinder(positions, colors, SQUARES);
+  ctm_finger_2 = mm_mult(translate_mat4((vec4){wrist_dimensions.x / 4.0, finger_dimensions.y / 2.0, 0.0, 1.0}), scale_mat4(finger_dimensions)); // scale, translate center of mass
 
   update_ctms();
 }
@@ -399,27 +482,47 @@ void display(void)
 
   // DRAW FLOOR
   glUniformMatrix4fv(ctm_location, 1, GL_FALSE, (GLfloat *)&ctm_floor);
-  glDrawArrays(GL_TRIANGLES, floor_idx.start, floor_idx.end);
+  glDrawArrays(GL_TRIANGLES, floor_idx, 438);
 
   // DRAW BASE
   glUniformMatrix4fv(ctm_location, 1, GL_FALSE, (GLfloat *)&ctm_base_f);
-  glDrawArrays(GL_TRIANGLES, base_idx.start, base_idx.end);
+  glDrawArrays(GL_TRIANGLES, base_idx, 438);
 
   // DRAW LOWER JOINT
   glUniformMatrix4fv(ctm_location, 1, GL_FALSE, (GLfloat *)&ctm_lower_joint_f);
-  glDrawArrays(GL_TRIANGLES, lower_joint_idx.start, lower_joint_idx.end);
+  glDrawArrays(GL_TRIANGLES, lower_joint_idx, 438);
 
   // DRAW LOWER ARM
   glUniformMatrix4fv(ctm_location, 1, GL_FALSE, (GLfloat *)&ctm_lower_arm_f);
-  glDrawArrays(GL_TRIANGLES, lower_arm_idx.start, lower_arm_idx.end);
+  glDrawArrays(GL_TRIANGLES, lower_arm_idx, 438);
 
   // DRAW MIDDLE JOINT
   glUniformMatrix4fv(ctm_location, 1, GL_FALSE, (GLfloat *)&ctm_middle_joint_f);
-  glDrawArrays(GL_TRIANGLES, middle_joint_idx.start, middle_joint_idx.end);
+  glDrawArrays(GL_TRIANGLES, middle_joint_idx, 438);
 
   // DRAW MIDDLE ARM
   glUniformMatrix4fv(ctm_location, 1, GL_FALSE, (GLfloat *)&ctm_middle_arm_f);
-  glDrawArrays(GL_TRIANGLES, middle_arm_idx.start, middle_arm_idx.end);
+  glDrawArrays(GL_TRIANGLES, middle_arm_idx, 438);
+
+  // DRAW UPPER JOINT
+  glUniformMatrix4fv(ctm_location, 1, GL_FALSE, (GLfloat *)&ctm_upper_joint_f);
+  glDrawArrays(GL_TRIANGLES, upper_joint_idx, 438);
+
+  // DRAW UPPER ARM
+  glUniformMatrix4fv(ctm_location, 1, GL_FALSE, (GLfloat *)&ctm_upper_arm_f);
+  glDrawArrays(GL_TRIANGLES, upper_arm_idx, 438);
+
+  // DRAW WRIST
+  glUniformMatrix4fv(ctm_location, 1, GL_FALSE, (GLfloat *)&ctm_wrist_f);
+  glDrawArrays(GL_TRIANGLES, wrist_idx, 438);
+
+  // DRAW FINGER 1
+  glUniformMatrix4fv(ctm_location, 1, GL_FALSE, (GLfloat *)&ctm_finger_1_f);
+  glDrawArrays(GL_TRIANGLES, wrist_idx, 438);
+
+  // DRAW FINGER 2
+  glUniformMatrix4fv(ctm_location, 1, GL_FALSE, (GLfloat *)&ctm_finger_2_f);
+  glDrawArrays(GL_TRIANGLES, wrist_idx, 438);
 
   glutSwapBuffers();
 }
@@ -443,7 +546,7 @@ void keyboard(unsigned char key, int mousex, int mousey)
   }
   else if (key == 't')
   {
-    if (lower_joint_delta > -120.0)
+    if (lower_joint_delta > -180.0)
     {
       lower_joint_delta -= 5.0;
       lower_joint_rotation = rotate_x_mat4(lower_joint_delta);
@@ -451,7 +554,7 @@ void keyboard(unsigned char key, int mousex, int mousey)
   }
   else if (key == 'y')
   {
-    if (lower_joint_delta < 120.0)
+    if (lower_joint_delta < 180.0)
     {
       lower_joint_delta += 5.0;
       lower_joint_rotation = rotate_x_mat4(lower_joint_delta);
@@ -459,7 +562,7 @@ void keyboard(unsigned char key, int mousex, int mousey)
   }
   else if (key == 'u')
   {
-    if (middle_joint_delta > -120.0)
+    if (middle_joint_delta > -180.0)
     {
       middle_joint_delta -= 5.0;
       middle_joint_rotation = rotate_x_mat4(middle_joint_delta);
@@ -467,11 +570,37 @@ void keyboard(unsigned char key, int mousex, int mousey)
   }
   else if (key == 'i')
   {
-    if (middle_joint_delta < 120.0)
+    if (middle_joint_delta < 180.0)
     {
       middle_joint_delta += 5.0;
       middle_joint_rotation = rotate_x_mat4(middle_joint_delta);
     }
+  }
+  else if (key == 'j')
+  {
+    if (upper_joint_delta > -180.0)
+    {
+      upper_joint_delta -= 5.0;
+      upper_joint_rotation = rotate_x_mat4(upper_joint_delta);
+    }
+  }
+  else if (key == 'k')
+  {
+    if (upper_joint_delta < 180.0)
+    {
+      upper_joint_delta += 5.0;
+      upper_joint_rotation = rotate_x_mat4(upper_joint_delta);
+    }
+  }
+  else if (key == 'o') // rotate base left
+  {
+    wrist_delta -= 5.0;
+    wrist_rotation = rotate_y_mat4(wrist_delta);
+  }
+  else if (key == 'p')
+  { // rotate base right
+    wrist_delta += 5.0;
+    wrist_rotation = rotate_y_mat4(wrist_delta);
   }
   else if (key == '=')
   {
@@ -484,6 +613,9 @@ void keyboard(unsigned char key, int mousex, int mousey)
 
     middle_joint_delta = 0.0;
     middle_joint_rotation = rotate_x_mat4(middle_joint_delta);
+
+    upper_joint_delta = 0.0;
+    upper_joint_rotation = rotate_x_mat4(upper_joint_delta);
   }
 
   update_ctms();
@@ -543,6 +675,7 @@ void print_controls()
   printf("[g][h]: Rotate base\n");
   printf("[t][y]: Rotate lower joint\n");
   printf("[u][i]: Rotate middle joint\n");
+  printf("[j][k]: Rotate upper joint\n");
   printf("[=]: Reset arm\n");
   printf("[c]: Print Controls\n");
   printf("[q]: Quit\n");
