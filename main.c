@@ -60,14 +60,24 @@ mat4 ctm_c_lower_joint = IDENTITY;
 mat4 ctm_lower_joint_f = IDENTITY;
 mat4 lower_joint_transformations = IDENTITY;
 vec4 lower_joint_dimensions;
-float lower_joint_delta = 0;
+float lower_joint_delta = 0.0;
 
 // LOWER ARM INFO
 mat4 ctm_lower_arm = IDENTITY;
 mat4 ctm_c_lower_arm = IDENTITY;
 mat4 ctm_lower_arm_f = IDENTITY;
-mat4 lower_arm_dimensions;
-vec4 lower_arm_transformations;
+vec4 lower_arm_dimensions;
+mat4 lower_arm_transformations;
+
+// MIDDLE JOINT INFO
+mat4 middle_joint_rotation = IDENTITY;
+mat4 middle_joint_translation = IDENTITY;
+mat4 ctm_middle_joint = IDENTITY;
+mat4 ctm_c_middle_joint = IDENTITY;
+mat4 ctm_middle_joint_f = IDENTITY;
+mat4 middle_joint_transformations = IDENTITY;
+vec4 middle_joint_dimensions;
+float middle_joint_delta = 0.0;
 
 float rotation_speed = 0.3f;
 
@@ -83,7 +93,7 @@ GLuint projection_location;
 // Viewing
 mat4 model_view = IDENTITY;
 GLuint model_view_location;
-vec4 eye = (vec4){0.0f, 0.0f, 20.0f, 1.0f};
+vec4 eye = (vec4){0.0f, 1.0f, 20.0f, 1.0f};
 vec4 at = ZERO;
 vec4 up = (vec4){0.0f, 1.0f, 0.0f, 1.0f};
 
@@ -130,7 +140,7 @@ void init_arm()
   // CREATE FLOOR //
   floor_dimensions = (vec4){9.0, 0.1, 9.0, 1.0};
   init_cylinder(positions, colors, SQUARES);
-  ctm_floor = mm_mult(translate_mat4((vec4){0.0, floor_dimensions.y / 2.0, 0.0, 1.0}), scale_mat4(floor_dimensions));
+  ctm_floor = mm_mult(translate_mat4((vec4){0.0, -floor_dimensions.y / 2.0, 0.0, 1.0}), scale_mat4(floor_dimensions));
   floor_translation = translate_mat4((vec4){0.0, -floor_dimensions.y / 2.0, 0.0, 1.0});
 
   // CREATE BASE //
@@ -142,15 +152,15 @@ void init_arm()
   // CREATE LOWER ARM JOINT //
   lower_joint_dimensions = (vec4){3.5, 2.5, 2.5, 1.0};
   init_cylinder(positions, colors, SQUARES);
-  ctm_lower_joint = mm_mult(scale_mat4(lower_joint_dimensions), rotate_z_mat4(90.0));        // rotate, scale
-  ctm_c_lower_joint = translate_mat4((vec4){0.0, lower_joint_dimensions.y / 2.0, 0.0, 1.0}); // translate on top of base
+  ctm_lower_joint = mm_mult(scale_mat4(lower_joint_dimensions), rotate_z_mat4(90.0)); // rotate, scale
+  ctm_c_lower_joint = translate_mat4((vec4){0.0, base_dimensions.y / 2.0, 0.0, 1.0}); // translate on top of base
   lower_joint_translation = translate_mat4((vec4){0.0, base_dimensions.y / 2.0, 0.0, 1.0});
 
   // CREATE LOWER ARM //
+  lower_arm_dimensions = (vec4){1.5, 5.0, 1.5, 1.0};
   init_cylinder(positions, colors, SQUARES);
-  ctm_lower_arm = mm_mult(translate_mat4((vec4){0.0, 2.5, 0.0, 1.0}), scale_mat4((vec4){1.5, 5.0, 1.5, 1.0})); // scale, translate center of mass
-  // ctm_c_lower_arm = translate_mat4((vec4){0.0, 3.5, 0.0, 1.0});                                                // translate to top of base
-  // lower_arm_transformations = translate_mat4((vec4){0.0, 2.5, 0.0, 1.0});
+  ctm_lower_arm = mm_mult(translate_mat4((vec4){0.0, lower_arm_dimensions.y / 2.0, 0.0, 1.0}), scale_mat4(lower_arm_dimensions)); // scale, translate center of mass
+  lower_arm_transformations = translate_mat4((vec4){0.0, lower_arm_dimensions.y / 2.0, 0.0, 1.0});
 
   // CREATE MIDDLE JOINT //
 
