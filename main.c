@@ -114,8 +114,10 @@ mat4 ctm_finger_1 = IDENTITY;
 mat4 ctm_finger_2 = IDENTITY;
 mat4 ctm_finger_1_f = IDENTITY;
 mat4 ctm_finger_2_f = IDENTITY;
-mat4 finger_transformations = IDENTITY;
+mat4 finger_1_transformations = IDENTITY;
+mat4 finger_2_transformations = IDENTITY;
 vec4 finger_dimensions;
+float finger_delta;
 
 // Mouse Control
 vec4 drag_from = ORIGIN;
@@ -198,11 +200,11 @@ void update_ctms()
   wrist_transformations = mm_mult(upper_joint_transformations, wrist_transformations);
 
   // FINGER 1 CTM
-  ctm_finger_1_f = mm_mult(finger_transformations, ctm_finger_1); // apply finger scaling/translating COM then translation to top of upper arm and then finger translations
+  ctm_finger_1_f = mm_mult(finger_1_transformations, ctm_finger_1); // apply finger scaling/translating COM then translation to top of upper arm and then finger translations
   ctm_finger_1_f = mm_mult(wrist_transformations, ctm_finger_1_f);
 
   // FINGER 2 CTM
-  ctm_finger_2_f = mm_mult(finger_transformations, ctm_finger_2); // apply finger scaling/translating COM then translation to top of upper arm and then finger translations
+  ctm_finger_2_f = mm_mult(finger_2_transformations, ctm_finger_2); // apply finger scaling/translating COM then translation to top of upper arm and then finger translations
   ctm_finger_2_f = mm_mult(wrist_transformations, ctm_finger_2_f);
 }
 
@@ -258,20 +260,20 @@ void init_arm()
   ctm_upper_arm = mm_mult(translate_mat4((vec4){0.0, upper_arm_dimensions.y / 2.0, 0.0, 1.0}), scale_mat4(upper_arm_dimensions)); // scale, translate center of mass
 
   // CREATE WRIST //
-  wrist_dimensions = (vec4){3.0, 1.5, 1.5, 1.0};
+  wrist_dimensions = (vec4){7.0, 1.5, 1.5, 1.0};
   init_cylinder(positions, colors, SQUARES);
   ctm_wrist = mm_mult(scale_mat4(wrist_dimensions), rotate_z_mat4(90.0));      // rotate, scale
   ctm_c_wrist = translate_mat4((vec4){0.0, upper_arm_dimensions.y, 0.0, 1.0}); // translate on top of the middle arm
   wrist_translation = translate_mat4((vec4){0.0, upper_arm_dimensions.y, 0.0, 1.0});
 
   // CREATE FINGER 1 //
-  finger_dimensions = (vec4){0.8, 3.0, 0.8, 1.0};
+  finger_dimensions = (vec4){1.0, 4.5, 1.0, 1.0};
   init_cylinder(positions, colors, SQUARES);
-  ctm_finger_1 = mm_mult(translate_mat4((vec4){-wrist_dimensions.x / 4.0, finger_dimensions.y / 2.0, 0.0, 1.0}), scale_mat4(finger_dimensions)); // scale, translate center of mass
+  ctm_finger_1 = mm_mult(translate_mat4((vec4){0.0 - finger_dimensions.x / 2, finger_dimensions.y / 2.0, 0.0, 1.0}), scale_mat4(finger_dimensions)); // scale, translate center of mass
 
   // CREATE FINGER 2 //
   init_cylinder(positions, colors, SQUARES);
-  ctm_finger_2 = mm_mult(translate_mat4((vec4){wrist_dimensions.x / 4.0, finger_dimensions.y / 2.0, 0.0, 1.0}), scale_mat4(finger_dimensions)); // scale, translate center of mass
+  ctm_finger_2 = mm_mult(translate_mat4((vec4){0.0 + finger_dimensions.x / 2, finger_dimensions.y / 2.0, 0.0, 1.0}), scale_mat4(finger_dimensions)); // scale, translate center of mass
 
   update_ctms();
 }
@@ -545,7 +547,7 @@ void keyboard(unsigned char key, int mousex, int mousey)
     base_rotation = rotate_y_mat4(base_delta);
   }
   else if (key == 't')
-  {
+  { // rotate lower joint left
     if (lower_joint_delta > -180.0)
     {
       lower_joint_delta -= 5.0;
@@ -553,7 +555,7 @@ void keyboard(unsigned char key, int mousex, int mousey)
     }
   }
   else if (key == 'y')
-  {
+  { // rotate lower joint right
     if (lower_joint_delta < 180.0)
     {
       lower_joint_delta += 5.0;
@@ -561,7 +563,7 @@ void keyboard(unsigned char key, int mousex, int mousey)
     }
   }
   else if (key == 'u')
-  {
+  { // rotate middle joint left
     if (middle_joint_delta > -180.0)
     {
       middle_joint_delta -= 5.0;
@@ -569,7 +571,7 @@ void keyboard(unsigned char key, int mousex, int mousey)
     }
   }
   else if (key == 'i')
-  {
+  { // rotate middle joint right
     if (middle_joint_delta < 180.0)
     {
       middle_joint_delta += 5.0;
@@ -577,7 +579,7 @@ void keyboard(unsigned char key, int mousex, int mousey)
     }
   }
   else if (key == 'j')
-  {
+  { // rotate upper joint left
     if (upper_joint_delta > -180.0)
     {
       upper_joint_delta -= 5.0;
@@ -585,22 +587,55 @@ void keyboard(unsigned char key, int mousex, int mousey)
     }
   }
   else if (key == 'k')
-  {
+  { // rotate upper joint right
     if (upper_joint_delta < 180.0)
     {
       upper_joint_delta += 5.0;
       upper_joint_rotation = rotate_x_mat4(upper_joint_delta);
     }
   }
-  else if (key == 'o') // rotate base left
-  {
+  else if (key == 'o')
+  { // rotate wrist left
     wrist_delta -= 5.0;
     wrist_rotation = rotate_y_mat4(wrist_delta);
   }
   else if (key == 'p')
-  { // rotate base right
+  { // rotate wrist right
     wrist_delta += 5.0;
     wrist_rotation = rotate_y_mat4(wrist_delta);
+  }
+  else if (key == 'c') // close fingers
+  {
+    finger_delta -= -0.2;
+
+    // if (finger_delta > -wrist_dimensions.x / 2.0)
+    // {
+    finger_1_transformations = add_m(translate_mat4((vec4){finger_delta, 0.0, 0.0, 1.0}), finger_1_transformations);
+    finger_2_transformations = add_m(translate_mat4((vec4){-finger_delta, 0.0, 0.0, 1.0}), finger_2_transformations);
+    // }
+  }
+  else if (key == 'v') // open fingers
+  {
+    finger_delta += 0.2;
+
+    // if (finger_delta < wrist_dimensions.x)
+    // {
+
+    finger_1_transformations = add_m(translate_mat4((vec4){-finger_delta, 0.0, 0.0, 1.0}), finger_1_transformations);
+    finger_2_transformations = add_m(translate_mat4((vec4){finger_delta, 0.0, 0.0, 1.0}), finger_2_transformations);
+    // }
+  }
+  else if (key == '0')
+  {
+    zoom(0.0f);
+  }
+  else if (key == '+')
+  {
+    zoom(zoom_level + zoom_speed);
+  }
+  else if (key == '-')
+  {
+    zoom(zoom_level - zoom_speed);
   }
   else if (key == '=')
   {
@@ -616,6 +651,13 @@ void keyboard(unsigned char key, int mousex, int mousey)
 
     upper_joint_delta = 0.0;
     upper_joint_rotation = rotate_x_mat4(upper_joint_delta);
+
+    wrist_delta = 0.0;
+    wrist_rotation = rotate_x_mat4(wrist_delta);
+
+    finger_delta = 0.0;
+    finger_1_transformations = translate_mat4((vec4){-wrist_dimensions.x / 4.0, upper_arm_dimensions.y, 0.0, 1.0});
+    finger_2_transformations = translate_mat4((vec4){wrist_dimensions.x / 4.0, upper_arm_dimensions.y, 0.0, 1.0});
   }
 
   update_ctms();
@@ -676,8 +718,10 @@ void print_controls()
   printf("[t][y]: Rotate lower joint\n");
   printf("[u][i]: Rotate middle joint\n");
   printf("[j][k]: Rotate upper joint\n");
+  printf("[o][p]: Rotate wrist\n");
+  printf("[c][v]: close open fingers\n");
   printf("[=]: Reset arm\n");
-  printf("[c]: Print Controls\n");
+  printf("[x]: Print Controls\n");
   printf("[q]: Quit\n");
 }
 
