@@ -22,8 +22,11 @@
 int n;
 vec4 *positions;
 vec4 *colors;
+vec4 *normals;
+
 int cylinder_pos;
 int cylinder_cols;
+int cylinder_norm;
 int curr_index = 0;
 
 // INDICES
@@ -131,9 +134,10 @@ GLuint projection_location;
 // Viewing
 mat4 model_view = IDENTITY;
 GLuint model_view_location;
-vec4 eye = (vec4){0.0f, 10.0f, 20.0f, 1.0f};
+vec4 eye = (vec4){0.0f, 10.0f, 30.0f, 1.0f};
 vec4 at = ZERO;
 vec4 up = (vec4){0.0f, 1.0f, 0.0f, 1.0f};
+vec4 forward;
 
 // CTM
 mat4 current_transformation_matrix = IDENTITY;
@@ -141,6 +145,34 @@ GLuint ctm_location;
 
 float zoom_level = 0.0f;
 float zoom_speed = 0.1f;
+
+// Lighting controls
+vec4 lightPosition = {0.0, 20.0, 0.0, 1.0};
+vec4 lightColor = {1.0, 1.0, 0.9, 1.0};
+float lightRadius = 25.0;
+float lightTheta = 0.0; // Initial horizontal angle
+float lightPhi = 45.0;  // Initial vertical angle (45 degrees)
+float lightSpeed = 5.0; // Degrees per keypress
+
+// Lighting parameters - adjusted for world space
+float ambientStrength = 0.3;
+float diffuseStrength = 0.7;
+float specularStrength = 0.5;
+float shininess = 32.0;
+bool useAmbient = true;
+bool useDiffuse = true;
+bool useSpecular = true;
+
+// Lighting uniform locations
+GLuint lightPosition_loc;
+GLuint lightColor_loc;
+GLuint ambientStrength_loc;
+GLuint diffuseStrength_loc;
+GLuint specularStrength_loc;
+GLuint shininess_loc;
+GLuint useAmbient_loc;
+GLuint useDiffuse_loc;
+GLuint useSpecular_loc;
 
 void init_buffers(int);
 void print_controls();
@@ -355,6 +387,9 @@ void init_buffers(int _n)
 
   colors = (vec4 *)malloc(sizeof(vec4) * n); // get pointer to colors array
   cylinder_cols = n * sizeof(vec4);          // get size of colors array
+
+  normals = (vec4 *)malloc(sizeof(vec4) * n); // get pointer to colors array
+  cylinder_norm = n * sizeof(vec4);           // get size of colors array
 }
 
 void frustum(float left, float right, float bottom, float top, float near,
@@ -380,19 +415,19 @@ void zoom(float new_zoom_level)
 
 void updateLightPosition()
 {
-  // // Convert spherical to cartesian coordinates around world origin
-  // float phi_rad = lightPhi * M_PI / 180.0;
-  // float theta_rad = lightTheta * M_PI / 180.0;
+  // Convert spherical to cartesian coordinates around world origin
+  float phi_rad = lightPhi * M_PI / 180.0;
+  float theta_rad = lightTheta * M_PI / 180.0;
 
-  // // Calculate position relative to world origin
-  // lightPosition.x = lightRadius * sin(phi_rad) * cos(theta_rad);
-  // lightPosition.y = lightRadius * cos(phi_rad);
-  // lightPosition.z = lightRadius * sin(phi_rad) * sin(theta_rad);
-  // lightPosition.w = 1.0; // Important for position
+  // Calculate position relative to world origin
+  lightPosition.x = lightRadius * sin(phi_rad) * cos(theta_rad);
+  lightPosition.y = lightRadius * cos(phi_rad);
+  lightPosition.z = lightRadius * sin(phi_rad) * sin(theta_rad);
+  lightPosition.w = 1.0; // Important for position
 
-  // // Update shader uniform
-  // glUniform4fv(lightPosition_loc, 1, (GLfloat *)&lightPosition);
-  // glutPostRedisplay();
+  // Update shader uniform
+  glUniform4fv(lightPosition_loc, 1, (GLfloat *)&lightPosition);
+  glutPostRedisplay();
 }
 
 void init()
@@ -423,6 +458,7 @@ void init()
                   positions); // Copy data from positions into allocated
                               // space in graphics card. 0 is the offset.
   glBufferSubData(GL_ARRAY_BUFFER, cylinder_pos, cylinder_cols, colors);
+  glBufferSubData(GL_ARRAY_BUFFER, cylinder_pos + cylinder_cols, cylinder_norm, normals);
 
   GLuint vPosition = glGetAttribLocation(
       program, "vPosition"); // Tell graphics card which bytes are positions
@@ -439,6 +475,28 @@ void init()
   projection_location = glGetUniformLocation(program, "projection");
   model_view_location = glGetUniformLocation(program, "model_view");
 
+  // Get lighting uniform locations
+  lightPosition_loc = glGetUniformLocation(program, "lightPosition");
+  lightColor_loc = glGetUniformLocation(program, "lightColor");
+  ambientStrength_loc = glGetUniformLocation(program, "ambientStrength");
+  diffuseStrength_loc = glGetUniformLocation(program, "diffuseStrength");
+  specularStrength_loc = glGetUniformLocation(program, "specularStrength");
+  shininess_loc = glGetUniformLocation(program, "shininess");
+  useAmbient_loc = glGetUniformLocation(program, "useAmbient");
+  useDiffuse_loc = glGetUniformLocation(program, "useDiffuse");
+  useSpecular_loc = glGetUniformLocation(program, "useSpecular");
+
+  // Set initial lighting values
+  glUniform4fv(lightPosition_loc, 1, (GLfloat *)&lightPosition);
+  glUniform4fv(lightColor_loc, 1, (GLfloat *)&lightColor);
+  glUniform1f(ambientStrength_loc, ambientStrength);
+  glUniform1f(diffuseStrength_loc, diffuseStrength);
+  glUniform1f(specularStrength_loc, specularStrength);
+  glUniform1f(shininess_loc, shininess);
+  glUniform1i(useAmbient_loc, useAmbient);
+  glUniform1i(useDiffuse_loc, useDiffuse);
+  glUniform1i(useSpecular_loc, useSpecular);
+
   glEnable(GL_DEPTH_TEST); // enable depth test
   glClearColor(
       0.0, 0.0, 0.0,
@@ -452,13 +510,6 @@ void look_at(vec4 new_eye, vec4 new_at, vec4 new_up)
   vec4 z_prime = norm(sub_v(new_eye, new_at));
   vec4 x_prime = norm(cross(new_up, z_prime));
   vec4 y_prime = norm(cross(z_prime, x_prime));
-
-  // printf("n: \t");
-  // print_v(n);
-  // printf("u: \t");
-  // print_v(u);
-  // printf("v: \t");
-  // print_v(v);
 
   mat4 r = (mat4){
       {x_prime.x, y_prime.x, z_prime.x, 0}, {x_prime.y, y_prime.y, z_prime.y, 0}, {x_prime.z, y_prime.z, z_prime.z, 0}, {0, 0, 0, 1}};
@@ -629,14 +680,6 @@ void keyboard(unsigned char key, int mousex, int mousey)
   {
     zoom(0.0f);
   }
-  else if (key == '+')
-  {
-    zoom(zoom_level + zoom_speed);
-  }
-  else if (key == '-')
-  {
-    zoom(zoom_level - zoom_speed);
-  }
   else if (key == '=')
   {
 
@@ -658,9 +701,44 @@ void keyboard(unsigned char key, int mousex, int mousey)
     finger_delta = 0.0;
     finger_1_transformations = translate_mat4((vec4){-wrist_dimensions.x / 4.0, upper_arm_dimensions.y, 0.0, 1.0});
     finger_2_transformations = translate_mat4((vec4){wrist_dimensions.x / 4.0, upper_arm_dimensions.y, 0.0, 1.0});
+  } // Light position controls
+
+  vec4 eye_move = ZERO;
+  float eye_move_speed = 1.0f;
+  forward = norm(sub_v(at, eye));
+  vec4 left = norm(cross(up, forward));
+
+  if (key == 'w') // zoom in
+  {
+    eye_move = forward;
+    eye = translate(eye, eye_move);
+  }
+  else if (key == 'a') // move left
+  {
+    eye = mv_mult(rotate_y_mat4(-10.0), eye);
+  }
+  else if (key == 's') // zoom out
+  {
+    eye_move = negate(forward);
+    eye = translate(eye, eye_move);
+  }
+  else if (key == 'd') // move right
+  {
+    eye = mv_mult(rotate_y_mat4(10.0), eye);
+  }
+  else if (key == 'e') // move right
+  {
+    eye = mv_mult(rotate_x_mat4(10.0), eye);
+  }
+  else if (key == 'r') // move right
+  {
+    eye = mv_mult(rotate_x_mat4(-10.0), eye);
   }
 
+  // eye = translate(eye, eye_move);
+  look_at(eye, at, up);
   update_ctms();
+
   glutPostRedisplay();
 }
 
@@ -720,6 +798,12 @@ void print_controls()
   printf("[j][k]: Rotate upper joint\n");
   printf("[o][p]: Rotate wrist\n");
   printf("[c][v]: close open fingers\n");
+  printf("[<][>]: move light left\\right\n");
+  printf("[|][\\]: move light up\\down\n");
+  printf("[7]: Toggle Ambient\n");
+  printf("[8]: Toggle Diffuse\n");
+  printf("[9]: Toggle Specular\n");
+  printf("[ [ ][ ] ]: adjust ambient\n");
   printf("[=]: Reset arm\n");
   printf("[x]: Print Controls\n");
   printf("[q]: Quit\n");
